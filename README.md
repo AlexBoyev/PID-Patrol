@@ -34,7 +34,7 @@ A lightweight FastAPI app that monitors specific processes by **exact name** and
 > The repo includes example screenshots under `docs/images/`.
 
 **Linux:**  
-![Linux](docs/images/running-on-linux.jpg)
+![Linux](docs/images/running-on-linux.png)
 
 **Windows:**  
 ![Windows](docs/images/windows-example.png)
