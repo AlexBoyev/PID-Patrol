@@ -5,7 +5,7 @@ import json
 
 from urllib import request, parse, error
 HOST = "127.0.0.1"
-PORT = 5000
+PORT = 80
 timeout = 3
 
 
