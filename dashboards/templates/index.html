@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ title }}</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/monitor.css">
+  {% if running %}
+  <meta http-equiv="refresh" content="{{ interval|int if interval else 5 }}">
+  {% endif %}
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <div class="logo">
+        <i class="fas fa-shield-alt"></i>
+        <h1>PID Patrol</h1>
+      </div>
+      <div class="status-indicator">
+        <div class="status-dot {% if running %}active{% endif %}"></div>
+        <span>{{ "Active" if running else "Stopped" }}</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="container">
+      <!-- Configuration Section -->
+      <div class="dashboard-section">
+        <div class="section-header">
+          <h2><i class="fas fa-cog"></i> Monitoring Configuration</h2>
+        </div>
+        <div class="section-content">
+          <div class="control-panel">
+            <div class="process-input-section">
+              <h3>Add Process to Monitor</h3>
+              <form class="process-form" method="post" action="/ui/add">
+                <div class="form-group">
+                  <label for="process-name">Process Name(s)</label>
+                  <input type="text" id="process-name" name="names" placeholder="e.g., chrome, python, notepad" autocomplete="off" required />
+                  <span class="hint">Multiple allowed: separate with commas, semicolons, or new lines.</span>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                  <i class="fas fa-plus"></i> Add Process
+                </button>
+              </form>
+
+              <div class="process-list" style="margin-top: 1rem;">
+                {% if not process_names %}
+                  <p style="color: #6c757d; text-align: center; padding: 1rem;">No processes configured</p>
+                {% else %}
+                  {% for n in process_names %}
+                    <div class="process-item">
+                      <span><strong>{{ n }}</strong></span>
+                      <form method="post" action="/ui/remove" style="margin: 0;">
+                        <input type="hidden" name="name" value="{{ n }}">
+                        <button class="remove-btn" title="Remove {{ n }}"><i class="fas fa-times"></i></button>
+                      </form>
+                    </div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="monitoring-controls">
+              <h3>Monitoring Controls</h3>
+              <p class="hint">Configure processes on the left, then start monitoring.</p>
+
+              <form method="post" action="/ui/interval" class="row-inline" style="margin-top: .75rem;">
+                <div class="form-group" style="max-width: 240px;">
+                  <label for="global-interval">Update Interval (seconds)</label>
+                  <input type="number" id="global-interval" name="interval" value="{{ interval|int if interval else 5 }}" min="1" max="86400" step="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off"/>
+                </div>
+                <button class="btn btn-primary btn-compact" title="Apply interval now">Update</button>
+              </form>
+              <p class="hint">Must be a positive number (≥ 1 second). Can be changed even when monitoring is stopped.</p>
+
+              <div style="margin: 1.25rem 0; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                <form method="post" action="/ui/start">
+                  <button class="btn btn-success" {% if running or not process_names %}disabled{% endif %}>
+                    <i class="fas fa-play"></i> Start Monitoring
+                  </button>
+                </form>
+                <form method="post" action="/ui/stop">
+                  <button class="btn btn-danger" {% if not running %}disabled{% endif %}>
+                    <i class="fas fa-stop"></i> Stop Monitoring
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="dashboard-section">
+        <div class="section-header">
+          <h2><i class="fas fa-chart-line"></i> Monitoring Results</h2>
+        </div>
+        <div class="section-content">
+          {% if not running %}
+            <div class="empty-state">
+              <i class="fas fa-search"></i>
+              <h3>No monitoring active</h3>
+              <p>Add processes above and start monitoring to see real-time data</p>
+            </div>
+          {% else %}
+            <table class="monitoring-table">
+              <thead>
+                <tr>
+                  <th>Process Name</th>
+                  <th>PIDs</th>
+                  <th>Status</th>
+                  <th>CPU %</th>
+                  <th>Memory (MB)</th>
+                  <th>Last Checked</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rows %}
+                <tr>
+                  <td><strong>{{ row.name }}</strong></td>
+                  <td>{{ row.pids|join(', ') if row.pids else '-' }}</td>
+                  <td><span class="status-badge status-{{ (row.status or "unknown")|lower|replace(" ", "-") }}">{{ (row.status or "unknown")|replace("_", " ") }}</span></td>
+                  <td>{{ "%.3f"|format(row.cpu_percent or 0) }}</td>
+                  <td>{{ "%.3f"|format(row.memory_mb or 0) }}</td>
+                  <td>{{ row.last_checked }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Tiny JS: submit forms as JSON; reload on 200; show error on 409 -->
+  <script>
+  (function () {
+    function payloadFor(form) {
+      const action = (form.getAttribute('action') || '').toLowerCase();
+      if (action.endsWith('/ui/add')) {
+        const v = form.querySelector('[name="names"]')?.value ?? '';
+        return { names: v };
+      }
+      if (action.endsWith('/ui/remove')) {
+        const v = form.querySelector('[name="name"]')?.value ?? '';
+        return { name: v };
+      }
+      if (action.endsWith('/ui/interval')) {
+        const v = form.querySelector('[name="interval"]')?.value ?? '';
+        return { interval: Number(v) };
+      }
+      if (action.endsWith('/ui/start')) return {};
+      if (action.endsWith('/ui/stop')) return {};
+      return {};
+    }
+
+    document.querySelectorAll('form[action^="/ui/"]').forEach((form) => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"],button:not([type])');
+        if (btn) btn.disabled = true;
+
+        try {
+          const resp = await fetch(form.action, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(payloadFor(form)),
+          });
+
+          if (resp.status === 200) {
+            location.reload(); // refresh to reflect new state
+            return;
+          }
+          if (resp.status === 409) {
+            const data = await resp.json().catch(() => ({}));
+            alert(data.error || 'Invalid input');
+            return;
+          }
+          alert('Unexpected response: ' + resp.status);
+        } catch (err) {
+          console.error(err);
+          alert('Request failed');
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+    });
+  })();
+  </script>
+</body>
+</html>
